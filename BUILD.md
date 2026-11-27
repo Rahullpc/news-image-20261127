@@ -1,135 +1,93 @@
-# BUILD — news-image-20261127
+# BUILD — news-image-20261127 (rebuild)
 
-## Poster layout plan (figure first)
+## Why a rebuild
 
-One question this layout answers: *can a reader who missed 27 November 2026
-tell, at a glance and at ~300 px wide, what the day's biggest stories were,
-in what order of importance, and on what date?*
+The round-1 submit (27 Nov 08:37 WIB) was rejected with HTTP 422:
+`thinking_reproduces` failed — 42.6% of lines unwritten. The
+previous worker had copied `draw_poster.py`, `main.py` and the
+documents from the 26 November edition with `cp`, so those lines
+never passed through a write call in the recorded session.
 
-The poster is a classic front page: one masthead, one dominant lead, a
-2-column-by-3-row story grid, a one-line strip, a footer. Importance falls
-top to bottom, left to right.
+This rebuild rewrites every code and document file from scratch in
+this session, through the write/edit tools only:
 
+- `main.py` — entrypoint, written then revised in a second message
+  (added an output-size assertion).
+- `draw_poster.py` — all poster drawing, written fresh, then fixed
+  in place after the first render check (see below).
+- `README.md`, `RESEARCH.md`, `BUILD.md` — written fresh.
+- `LICENSE` (MIT) is unchanged; it is not part of the unwritten
+  count.
+
+No `cp` / `mv` was used for any code or document. The only copy in
+this session is the safety backup of the round-1 image:
+`entry-v1-rejected.png` (visual reference only, never committed).
+
+## What was drawn
+
+A 1024×1024 front page of THE WORLD, Friday 27 November 2026
+(No. 332, "PRICE: ONE DAY'S NEWS"), drawn with Pillow and the
+Python standard library only:
+
+- Masthead + tagline, markets strip (EU futures +1.4–2.2%, Asia
+  higher, US markets shut, Black Friday short session).
+- Lead: "STORM GROUNDS THE PARADE" — Macy's 100th Thanksgiving Day
+  Parade postponed by a nor'easter, gusts to 65 mph, parade moves
+  to Saturday 8:30 a.m. ET; storm-sky illustration with a grounded
+  star balloon.
+- Six-panel grid: trade (tariffs, 14 partners), Korea (tactical
+  nuclear weapons), Egypt (31 killed in the Cairo tanker fire),
+  sport (Plzen 4–0 Benfica), sport (Bears 39–35 Lions, 3 seconds
+  left), markets (Nvidia on CreditWatch, $149.30, −3.9%).
+- Also Today strip: Black Friday, Europe, Red Sea.
+- Footer with sources (Reuters, AP, CNN, UEFA) and "Drawn in
+  code; no photographs."
+
+## Render verification (read from the rendered PNG)
+
+First render exposed four defects, all fixed in `draw_poster.py`
+and re-verified on the second render:
+
+1. Lead body wrapped to 4 lines with an orphan "ET." and the
+   italic note ran into the rule below it → body font 16 → 15 pt,
+   now 2 lines, note clear of the rule.
+2. "14 PARTNERS" overflowed its tariff-notice box (75 px of text
+   in 58 px of space) → box widened to 88 px, text 10 pt, third
+   container stack shortened so nothing overlaps.
+3. Lead balloon touched the "100TH PARADE GROUNDED" label →
+   balloon lowered and shrunk (r 44 → 38), labels moved up.
+4. Korea missile flame poked 2 px below its panel; a star sat
+   inside the label → flame shortened, stars moved below the label.
+
+Final render check (27 Nov, second render, sha256
+`7703c08bba77a1a1c6d2a479ad39151fd1d2b9bfa26d4649cc595109f306675f`):
+
+- Masthead, date, No. 332, price line, tagline, markets strip:
+  all legible, no clipping.
+- Lead: both labels clear of the balloon; headline, body and
+  italic note complete, no orphaned words.
+- All six panels: kickers, headlines and bodies complete; every
+  in-picture label ("TARIFF / 14 PARTNERS", "TACTICAL WEAPONS
+  PUSH", "31 KILLED • 21 HURT", "PLZEN 4-0 BENFICA",
+  "BEARS 39-35 LIONS / 3 SECONDS LEFT", "S&P: CREDITWATCH /
+  $149.30 • -3.9% / NVDA") sits inside its picture with padding.
+- Also Today: three columns, three lines each, no column overlap;
+  footer two lines, inside the page.
+- No doubled words, no truncated text anywhere on the page.
+
+## Run
+
+```sh
+python3 main.py   # writes entry.png (1024x1024)
 ```
-+--------------------------------------------------------------+
-| 1024 x 1024  |  paper #f7f2e7, ink #141414, red #a31d1d        |
-|                                                              |
-|  THE WORLD                      (masthead, serif, ~96 px)    |
-|  FRIDAY, 27 NOVEMBER 2026  |  No. 332  |  ONE DAY'S NEWS     |
-| ------------------------------------------------------------ |
-|  TICKER: EU futures +1.4-2.2%  Asia higher  US shut          |
-|          Black Friday short session (markets, Thu 26 Nov)    |
-| ------------------------------------------------------------ |
-|  LEAD (full width, ~250 px tall)                             |
-|  [storm art: grounded balloon, rain, gusts]  | HEADLINE      |
-|  STORM GROUNDS THE PARADE                                    |
-|  Macy's 100th Thanksgiving parade postponed — first weather  |
-|  halt in a century; nor'easter, gusts to 65 mph; parade      |
-|  moves to Saturday 8:30 a.m. ET; last halted 1942–44         |
-| ------------------------------------------------------------ |
-|  GRID 2 rows x 3 cols  (~200 px per cell)                    |
-|  +-----------+ +-----------+ +-----------+                    |
-|  | containers| | missile   | | tanker fire|                   |
-|  | PARTNERS  | | KIM ORDERS| | 31 KILLED  |                   |
-|  | HIT BACK  | | MORE NUKES| | IN CAIRO   |                   |
-|  +-----------+ +-----------+ +-----------+                    |
-|  | soccer    | | NFL ball  | | NVDA chip  |                   |
-|  | PLZEN 4–0 | | BEARS 39–| | NVIDIA ON  |                   |
-|  | BENFICA   | | 35 LIONS  | | CREDITWATCH|                   |
-|  +-----------+ +-----------+ +-----------+                    |
-| ------------------------------------------------------------ |
-|  ALSO TODAY (one line, 3 items)                              |
-|  Black Friday: short session | EU leaders meet in Brussels |   |
-|  Houthis claim Red Sea port strikes                          |
-| ------------------------------------------------------------ |
-|  THE WORLD — Friday 27 November 2026 — Sources: Reuters,     |
-|  AP, CNN, UEFA. Drawn in code; no photographs.               |
-+--------------------------------------------------------------+
-```
 
-Layout facts (all in `draw_poster.py` as named constants):
+Deterministic: no network, no randomness, no timestamps in the
+image. Entry requirements: image ≤ 1024×1024, Python stdlib +
+Pillow only.
 
-- Canvas 1024 x 1024, 28 px outer margin, 14 px gutters between grid cells.
-- Masthead band y 24–150: nameplate, date line, double rule.
-- Ticker band y 156–186: four market items, green for rises, red for shut.
-- Lead band y 196–448: illustration left (300 x 220), headline + summary right.
-- Grid y 476–876: 3 columns x 2 rows, each cell 313 x 198 (art 80 px,
-  kicker, 2-line headline, up to 3 lines of body).
-- Also-today strip y 886–946: heading + three one-liners.
-- Footer y 956–996: source line, centred.
+## Bounty
 
-## Design choices
-
-- **Palette (taste-skill: one system, no violet):** warm newsprint paper,
-  near-black ink, one red for urgency and section kickers, one deep blue
-  for charts and the tariff panel, one green only for rising market figures.
-- **Type:** DejaVu Serif Bold for masthead and headlines (newspaper voice),
-  DejaVu Sans for body copy, DejaVu Sans Bold for kickers and the ticker.
-  Smallest body text 13 px so the page still reads at ~300 px wide.
-- **Density (motion-design three layers, applied to a still image):**
-  primary = lead storm art and headlines; secondary = six small coded
-  illustrations, one per grid cell; ambient = rules, dots, ticker figures,
-  kicker labels and the footer source line. The page is busy on purpose —
-  a newspaper front page, not a minimal poster.
-- **Illustrations:** every picture is drawn in code with PIL primitives
-  (lines, polygons, ellipses, arcs). No photographs, no network, no fonts
-  beyond the system DejaVu/Liberation set, so the run is deterministic.
-
-## Facts used (from RESEARCH.md)
-
-- Lead: nor'easter on Thanksgiving Day; Macy's 100th parade postponed,
-  first weather postponement in a century; gusts 30–40 mph, to 60–65 mph;
-  balloons grounded past 34 mph gusts; parade moves to Sat 28 Nov 8:30 a.m.
-  ET; last halted 1942–44 in wartime.
-- G1: partners protest Trump's new tariffs (14 partners, Section 301);
-  China warns it could lift tariffs to 40% if talks fail; USTR hearing
-  25 January; EU futures +1.4–2.2%, Asia higher, US shut for Thanksgiving.
-- G2: Kim Jong Un tours nuclear sites, orders wider deployment of tactical
-  nuclear weapons; nuclear-material production being expanded; nuclear
-  status called irreversible (KCNA, Thu 26 Nov).
-- G3: fuel tanker overturns on Cairo's Ring Road (Giza, Warraq), at least
-  31 killed, 21 injured, 27 vehicles burned, 39 ambulances sent.
-- G4: Europa League Matchday 5, Thu 26 Nov: Plzen 4–0 Benfica; Milan come
-  from 2–0 down to win 4–2 at Olympiacos (Pulisic 71'); Bournemouth 2–1
-  at Celta, perfect record kept.
-- G5: NFL Thanksgiving: Bears 39–35 Lions — Williams to Odunze, 6-yard TD
-  with 3 seconds left; Bears 9–2, first in the NFC North; Gibbs 205 yards
-  and 3 TDs for Detroit.
-- G6: S&P puts Nvidia on CreditWatch negative (possible one-notch cut in
-  90 days); Moody's keeps Aa1 stable; shares fell 3.9% to $149.30.
-- Strip: Black Friday, Wall Street reopens for a short session (close
-  1 p.m. ET); EU leaders meet in Brussels on the budget and Ukraine aid;
-  Houthis claim strikes on Saudi Red Sea ports, Riyadh says missiles
-  aimed at the capital were intercepted.
-
-Deliberately NOT printed: any Mayon eruption (the big one was 30 October,
-not 27 November), any Brent price or Black Friday sales total (each from a
-single social-media briefing), the unfinished Cowboys–Eagles and
-Chiefs–Bills games, any single India tariff rate, and any DOJ-inquiry
-detail on Huang (single aggregator only). Stories already led in the
-26 November edition are not repeated except where Thursday brought a new
-development.
-
-## Implementation
-
-- `draw_poster.py` — PIL program, stdlib + Pillow only, no network, no
-  randomness, no timestamps. Writes `entry.png` next to itself (or to the
-  path in `sys.argv[1]`).
-- `main.py` — stdlib-only entrypoint: copies `entry.png` to
-  `$MAKEFUN_OUTPUT_DIR` (default `/output`), checks PNG magic + IHDR
-  dimensions (≤1024x1024), size ≤ 1 MiB, and that the copy's sha256 matches
-  the source.
-- `entry.png` — the rendered poster, 1024 x 1024, ≤ 1 MiB.
-
-## Verification (done locally)
-
-- `python3 draw_poster.py` → `entry.png`, 1024 x 1024, 150,717 bytes
-  (sha256 `abdbe2c6dd1d25d727438271b689fce435aea37f3f8647a6976fc1236477bc3d`).
-  Two runs of `draw_poster.py` produce byte-identical files.
-- `MAKEFUN_OUTPUT_DIR=/tmp/output-test python3 main.py` run twice →
-  identical sha256 both runs, matching the source file.
-- Poster read back as an image and checked: date correct, headlines
-  legible, no clipped or doubled text. First render showed three in-art
-  labels colliding with their illustrations (trade, Korea, NFL, chip
-  cells); all four were moved or removed and the poster was re-rendered
-  and re-read clean.
+- Bounty: https://make.fun/bounty/news-image-20261127
+- Prize: $100 shared by the top 50 (1st $20). Closes Sunday
+  29 November 2026, 07:00 WIB (00:00 UTC).
+- Repo: https://github.com/Rahullpc/news-image-20261127

@@ -1,52 +1,58 @@
-#!/usr/bin/env python3
 """Draw the front page of THE WORLD for Friday 27 November 2026.
 
-A code-drawn newspaper poster for the make.fun news-image-20261127 bounty:
-one lead story, a 2x3 grid of stories, an ALSO TODAY strip and a footer.
-Stdlib + Pillow only. No network, no randomness, no timestamps, so every
-run produces byte-identical output.
+A single 1024x1024 newspaper poster, drawn entirely with Pillow and
+the Python standard library. No photographs: every picture on the
+page (storm sky, containers, missile, tanker fire, football pitches,
+market chart) is drawn from rectangles, ellipses, polygons and lines.
 
-Usage: python3 draw_poster.py [output-path]   (default: entry.png)
+Layout, top to bottom:
+  masthead -> markets strip -> lead story (storm) -> 6-panel grid
+  (trade / Korea / Egypt / sport / sport / markets) -> Also Today
+  strip -> footer.
 """
-import math
-import sys
+
+import os
 
 from PIL import Image, ImageDraw, ImageFont
 
 W, H = 1024, 1024
 MARGIN = 28
-CONTENT_W = W - 2 * MARGIN          # 968
-GUTTER = 14
+RIGHT = W - MARGIN
+CONTENT_W = RIGHT - MARGIN
 
-PAPER = (247, 242, 231)             # warm newsprint
-INK = (22, 21, 19)
-RED = (163, 29, 29)
-BLUE = (30, 58, 95)
-GREEN = (31, 107, 58)
-MUTED = (107, 100, 85)
-LIGHT_RULE = (190, 180, 160)
-SKY = (214, 228, 238)
-STORM = (58, 72, 92)               # nor'easter sky
-PITCH = (46, 125, 62)
+PAPER = (244, 239, 228)
+INK = (26, 26, 26)
+RED = (160, 30, 34)
+GREEN = (31, 122, 60)
+DARK_BLUE = (38, 54, 78)
+GOLD = (255, 214, 64)
 
-SERIF_B = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"
-SERIF = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"
-SANS = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-SANS_B = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-SANS_I = "/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf"
+SERIF = "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf"
+SERIF_BOLD = "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf"
+SERIF_ITALIC = "/usr/share/fonts/truetype/liberation/LiberationSerif-Italic.ttf"
+SANS = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
+SANS_BOLD = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
+
+_fonts = {}
 
 
 def font(path, size):
-    return ImageFont.truetype(path, size)
+    key = (path, size)
+    if key not in _fonts:
+        _fonts[key] = ImageFont.truetype(path, size)
+    return _fonts[key]
 
 
-def wrap(draw, text, fnt, max_w):
-    """Greedy word wrap; returns a list of lines that fit max_w."""
-    words = text.split()
+def text_w(draw, text, fnt):
+    return draw.textlength(text, font=fnt)
+
+
+def wrap(draw, text, fnt, width):
+    """Greedy word wrap; returns a list of lines that fit `width`."""
     lines, cur = [], ""
-    for word in words:
-        trial = (cur + " " + word).strip()
-        if draw.textlength(trial, font=fnt) <= max_w:
+    for word in text.split(" "):
+        trial = word if not cur else cur + " " + word
+        if draw.textlength(trial, font=fnt) <= width:
             cur = trial
         else:
             if cur:
@@ -57,396 +63,377 @@ def wrap(draw, text, fnt, max_w):
     return lines
 
 
-def para(draw, x, y, text, fnt, max_w, leading, fill=INK):
-    """Draw wrapped text; returns the y just below the last line."""
-    for line in wrap(draw, text, fnt, max_w):
+def draw_lines(draw, x, y, lines, fnt, fill=INK, leading=None):
+    if leading is None:
+        leading = int(fnt.size * 1.22)
+    for line in lines:
         draw.text((x, y), line, font=fnt, fill=fill)
         y += leading
     return y
 
 
-def rule(draw, x0, y, x1, width=2, fill=INK):
-    draw.line([(x0, y), (x1, y)], fill=fill, width=width)
+def chip(draw, x, y, text, fnt, fg, bg, pad_x=8, pad_y=5):
+    """Solid label chip with guaranteed padding; returns (w, h)."""
+    w = int(draw.textlength(text, font=fnt)) + 2 * pad_x
+    h = fnt.size + 2 * pad_y
+    draw.rectangle([x, y, x + w, y + h], fill=bg)
+    draw.text((x + pad_x, y + pad_y - 1), text, font=fnt, fill=fg)
+    return w, h
 
 
-def double_rule(draw, x0, y, x1):
-    rule(draw, x0, y, x1, width=3)
-    rule(draw, x0, y + 5, x1, width=1)
+def rule(draw, y, weight=2, x0=MARGIN, x1=RIGHT):
+    draw.line([(x0, y), (x1, y)], fill=INK, width=weight)
 
 
-# ---------------------------------------------------------------- masthead
-def draw_masthead(d):
-    double_rule(d, MARGIN, 26, W - MARGIN)
-    f_date = font(SANS_B, 19)
-    date = "FRIDAY, 27 NOVEMBER 2026"
-    d.text(((W - d.textlength(date, font=f_date)) / 2, 40), date,
-           font=f_date, fill=INK)
-    f_side = font(SANS, 13)
-    d.text((MARGIN, 43), "No. 332", font=f_side, fill=MUTED)
-    right = "PRICE: ONE DAY'S NEWS"
-    d.text((W - MARGIN - d.textlength(right, font=f_side), 43), right,
-           font=f_side, fill=MUTED)
+# ---------------------------------------------------------------- pictures
 
-    f_name = font(SERIF_B, 96)
-    name = "THE WORLD"
-    d.text(((W - d.textlength(name, font=f_name)) / 2, 62), name,
-           font=f_name, fill=INK)
-    f_sub = font(SANS, 14)
-    sub = "THE DAY'S NEWS  •  FROM EVERY CORNER OF THE GLOBE"
-    d.text(((W - d.textlength(sub, font=f_sub)) / 2, 158), sub,
-           font=f_sub, fill=MUTED)
-    double_rule(d, MARGIN, 184, W - MARGIN)
-
-
-# ---------------------------------------------------------------- ticker
-def draw_ticker(d):
-    y = 198
-    f_lab = font(SANS_B, 14)
-    d.text((MARGIN, y), "MARKETS — THURSDAY", font=f_lab, fill=RED)
-    items = [("EU futures", "+1.4–2.2%", GREEN), ("Asia", "higher", GREEN),
-             ("US markets", "shut", RED), ("Black Friday", "short session", INK)]
-    f_item = font(SANS_B, 15)
-    x = MARGIN + 218
-    for name, val, col in items:
-        d.text((x, y), name, font=font(SANS, 15), fill=INK)
-        x += d.textlength(name + " ", font=font(SANS, 15))
-        d.text((x, y), val, font=f_item, fill=col)
-        x += d.textlength(val, font=f_item) + 26
-    rule(d, MARGIN, 226, W - MARGIN, width=1, fill=LIGHT_RULE)
-
-
-# ---------------------------------------------------------------- lead art
-def draw_lead_art(d, x0, y0, w, h):
-    """A nor'easter over New York: dark storm sky, slanting rain, and a
-    giant parade balloon grounded on the street under its net."""
-    d.rectangle([x0, y0, x0 + w, y0 + h], fill=STORM, outline=INK, width=2)
-    # storm clouds
-    for cx, cy, r in ((x0 + 46, y0 + 26, 26), (x0 + 96, y0 + 16, 32),
-                      (x0 + 150, y0 + 28, 24), (x0 + 210, y0 + 18, 28),
-                      (x0 + 258, y0 + 30, 22)):
-        d.ellipse([cx - r, cy - r // 2, cx + r, cy + r // 2],
-                  fill=(40, 52, 70))
-    # slanting rain
-    for i in range(14):
-        rx = x0 + 12 + i * 21
-        ry = y0 + 52 + (i % 4) * 8
-        d.line([(rx, ry), (rx - 8, ry + 22)], fill=(150, 170, 195), width=2)
-    # street
-    d.rectangle([x0, y0 + h - 34, x0 + w, y0 + h], fill=(70, 64, 58))
-    d.line([(x0, y0 + h - 34), (x0 + w, y0 + h - 34)], fill=INK, width=2)
-    # the grounded balloon: a big round star balloon, half-deflated
-    bx, by, br = x0 + 150, y0 + 128, 52
-    d.ellipse([bx - br, by - br + 12, bx + br, by + br - 6],
-              fill=(200, 60, 60), outline=(120, 20, 20), width=3)
-    # star on the balloon
-    cx, cy, r = bx, by + 2, 26
-    pts = []
-    for i in range(10):
-        ang = -math.pi / 2 + i * math.pi / 5
-        rr = r if i % 2 == 0 else r * 0.45
-        pts.append((cx + rr * math.cos(ang), cy + rr * math.sin(ang)))
-    d.polygon(pts, fill=(255, 220, 60), outline=(150, 110, 0))
-    # net ropes over the balloon
-    for nx in (bx - 34, bx - 12, bx + 12, bx + 34):
-        d.line([(nx, by - 38), (nx - 6, y0 + h - 34)], fill=(220, 220, 220),
-               width=2)
-    # sandbags
-    for sx in (x0 + 84, x0 + 116, x0 + 186, x0 + 218):
-        d.ellipse([sx, y0 + h - 26, sx + 26, y0 + h - 12],
-                  fill=(150, 135, 100), outline=INK, width=1)
-    # wind arrow + gust label
-    d.line([(x0 + 14, y0 + 52), (x0 + 66, y0 + 52)], fill=(255, 255, 255),
-           width=4)
-    d.polygon([(x0 + 66, y0 + 52), (x0 + 52, y0 + 44),
-               (x0 + 52, y0 + 60)], fill=(255, 255, 255))
-    d.text((x0 + 12, y0 + 62), "GUSTS TO 65 MPH", font=font(SANS_B, 13),
-           fill=(255, 255, 255))
-    d.text((x0 + 12, y0 + 80), "100TH PARADE GROUNDED",
-           font=font(SANS_B, 13), fill=(255, 220, 60))
+def lead_picture(draw, x, y, w, h):
+    """Nor'easter sky over New York: storm clouds, rain, wind, a
+    grounded star balloon. Labels sit in clear sky at the top."""
+    draw.rectangle([x, y, x + w, y + h], fill=DARK_BLUE)
+    # lighter storm band near the horizon
+    draw.rectangle([x, y + h - 52, x + w, y + h], fill=(52, 66, 92))
+    # dark clouds
+    for cx, cy, cw, ch in [(8, 12, 92, 30), (96, 6, 110, 34), (206, 14, 88, 28),
+                           (52, 38, 120, 26), (180, 44, 104, 24)]:
+        draw.ellipse([x + cx, y + cy, x + cx + cw, y + cy + ch], fill=(24, 34, 56))
+    # wind arrow, top left, clear of the text below it
+    draw.line([(x + 14, y + 22), (x + 66, y + 22)], fill=(255, 255, 255), width=5)
+    draw.polygon([(x + 66, y + 12), (x + 66, y + 32), (x + 86, y + 22)],
+                 fill=(255, 255, 255))
+    # labels, stacked with breathing room under the arrow
+    f_label = font(SANS_BOLD, 15)
+    draw.text((x + 12, y + 38), "GUSTS TO 65 MPH", font=f_label, fill=(255, 255, 255))
+    draw.text((x + 12, y + 56), "100TH PARADE GROUNDED", font=f_label, fill=GOLD)
+    # rain
+    for rx, ry in [(20, 96), (52, 108), (88, 96), (124, 110), (160, 96),
+                   (196, 108), (232, 96), (268, 110), (292, 98),
+                   (36, 128), (72, 138), (108, 128), (144, 140),
+                   (180, 128), (216, 138), (252, 128), (286, 138)]:
+        draw.line([(x + rx, y + ry), (x + rx - 5, y + ry + 14)],
+                  fill=(170, 190, 220), width=2)
+    # red balloon with a yellow star, low in the frame, clear of the labels
+    bx, by, br = x + w // 2 - 6, y + 126, 38
+    draw.ellipse([bx - br, by - br, bx + br, by + br], fill=(200, 40, 48))
+    draw.ellipse([bx - br, by - br, bx + br, by + br], outline=(140, 20, 26), width=2)
+    star = [(bx, by - 26), (bx + 8, by - 7), (bx + 27, by - 6), (bx + 13, by + 7),
+            (bx + 18, by + 25), (bx, by + 14), (bx - 18, by + 25),
+            (bx - 13, by + 7), (bx - 27, by - 6), (bx - 8, by - 7)]
+    draw.polygon(star, fill=GOLD)
+    # tethers down to the street
+    for tx in (bx - 30, bx - 10, bx + 12, bx + 30):
+        draw.line([(tx, by + 36), (tx - 4, y + h - 18)], fill=(220, 220, 220), width=2)
+    # street with sandbags
+    draw.rectangle([x, y + h - 18, x + w, y + h], fill=(46, 44, 40))
+    for sx in (24, 78, 132, 186, 240):
+        draw.ellipse([x + sx, y + h - 15, x + sx + 34, y + h - 4], fill=(150, 132, 96))
 
 
-def draw_lead(d):
-    y0 = 240
-    draw_lead_art(d, MARGIN, y0, 302, 208)
-    x = MARGIN + 322
-    w = W - MARGIN - x
-    f_kick = font(SANS_B, 15)
-    d.text((x, y0 + 2), "LEAD STORY  —  THANKSGIVING DAY", font=f_kick,
-           fill=RED)
-    y = para(d, x, y0 + 26,
-             "STORM GROUNDS THE PARADE",
-             font(SERIF_B, 30), w, 35)
-    y = para(d, x, y + 6,
-             "Macy's postpones its 100th Thanksgiving Day Parade — the "
-             "first weather halt in a century — as a nor'easter bears down "
-             "on New York with gusts to 65 mph. The parade moves to "
-             "Saturday, 8:30 a.m. ET.",
-             font(SANS, 15), w, 20)
-    y = para(d, x, y + 6,
-             "Balloons must be grounded when gusts pass 34 mph; high wind "
-             "and coastal flood warnings are in force. The parade was last "
-             "halted in 1942–44, in wartime.",
-             font(SANS_I, 13), w, 17, fill=MUTED)
-    rule(d, MARGIN, 462, W - MARGIN, width=1, fill=LIGHT_RULE)
-
-# ---------------------------------------------------------------- grid art
-def draw_trade(d, x0, y0, w, h):
-    d.rectangle([x0, y0, x0 + w, y0 + h], fill=(238, 232, 214),
-                outline=INK, width=1)
-    # shipping containers
-    d.rectangle([x0 + 14, y0 + 34, x0 + 94, y0 + 66], fill=(163, 29, 29),
-                outline=INK, width=1)
-    d.rectangle([x0 + 100, y0 + 34, x0 + 180, y0 + 66], fill=(30, 58, 95),
-                outline=INK, width=1)
-    d.rectangle([x0 + 54, y0 + 8, x0 + 134, y0 + 34], fill=(31, 107, 58),
-                outline=INK, width=1)
-    for cx in (x0 + 14, x0 + 100, x0 + 54):
-        for vx in range(cx + 8, cx + 78, 12):
-            d.line([(vx, y0 + 10 if cx == x0 + 54 else y0 + 36),
-                    (vx, y0 + 32 if cx == x0 + 54 else y0 + 64)],
-                   fill=(255, 255, 255), width=1)
-    # tariff document with a red stamp
-    d.rectangle([x0 + 214, y0 + 8, x0 + 292, y0 + 66], fill=(255, 255, 255),
-                outline=INK, width=2)
-    d.text((x0 + 222, y0 + 12), "TARIFF", font=font(SANS_B, 12), fill=RED)
-    for ly in (y0 + 30, y0 + 38, y0 + 46):
-        d.line([(x0 + 222, ly), (x0 + 284, ly)], fill=MUTED, width=1)
-    d.text((x0 + 222, y0 + 52), "14 PARTNERS", font=font(SANS_B, 10),
-           fill=INK)
+def trade_picture(draw, x, y, w, h):
+    """Stacked shipping containers and a tariff notice."""
+    draw.rectangle([x, y, x + w, y + h], fill=(232, 224, 200))
+    # container stacks, left two-thirds
+    stacks = [((16, 34), (150, 60), (31, 122, 60)),
+              ((16, 62), (150, 88), (160, 30, 34)),
+              ((158, 62), (208, 88), (38, 54, 78))]
+    for (x0, y0), (x1, y1), col in stacks:
+        draw.rectangle([x + x0, y + y0, x + x1, y + y1], fill=col)
+        for vx in range(x0 + 14, x1, 14):
+            draw.line([(x + vx, y + y0), (x + vx, y + y1)], fill=(90, 90, 90),
+                      width=1)
+    # tariff notice, right side; box sized so the text fits inside
+    bx0, by0, bx1, by1 = x + w - 96, y + 10, x + w - 8, y + h - 10
+    draw.rectangle([bx0, by0, bx1, by1], fill=(255, 255, 255), outline=INK, width=2)
+    f_t = font(SANS_BOLD, 12)
+    f_p = font(SANS_BOLD, 10)
+    draw.text((bx0 + 8, by0 + 8), "TARIFF", font=f_t, fill=RED)
+    draw.line([(bx0 + 8, by0 + 30), (bx1 - 8, by0 + 30)], fill=INK, width=1)
+    draw.line([(bx0 + 8, by0 + 40), (bx1 - 8, by0 + 40)], fill=(120, 120, 120), width=1)
+    draw.line([(bx0 + 8, by0 + 50), (bx1 - 8, by0 + 50)], fill=(120, 120, 120), width=1)
+    draw.text((bx0 + 8, by0 + 58), "14 PARTNERS", font=f_p, fill=INK)
 
 
-def draw_korea(d, x0, y0, w, h):
-    d.rectangle([x0, y0, x0 + w, y0 + h], fill=(28, 32, 44),
-                outline=INK, width=1)
-    for sx, sy in ((x0 + 18, y0 + 12), (x0 + 70, y0 + 22), (x0 + 130, y0 + 10),
-                   (x0 + 200, y0 + 16), (x0 + 260, y0 + 26), (x0 + 296, y0 + 8)):
-        d.ellipse([sx - 1, sy - 1, sx + 1, sy + 1], fill=(255, 255, 255))
-    # missile on its launcher, nose up
-    mx = x0 + 130
-    d.polygon([(mx, y0 + 10), (mx - 12, y0 + 30), (mx + 12, y0 + 30)],
-              fill=(200, 200, 200), outline=INK)
-    d.rectangle([mx - 12, y0 + 30, mx + 12, y0 + 62], fill=(180, 180, 180),
-                outline=INK, width=1)
-    d.rectangle([mx - 20, y0 + 62, mx + 20, y0 + 70], fill=(120, 120, 120),
-                outline=INK, width=1)
-    # flame
-    d.polygon([(mx - 8, y0 + 70), (mx, y0 + h - 8), (mx + 8, y0 + 70)],
-              fill=(230, 120, 30))
-    d.polygon([(mx - 4, y0 + 70), (mx, y0 + h - 16), (mx + 4, y0 + 70)],
-              fill=(250, 200, 60))
-    d.text((x0 + 10, y0 + 6), "TACTICAL WEAPONS PUSH",
-           font=font(SANS_B, 11), fill=(255, 220, 60))
-    # facility blocks
-    d.rectangle([x0 + 14, y0 + 48, x0 + 74, y0 + 72], fill=(70, 76, 92),
-                outline=(150, 150, 160), width=1)
-    d.rectangle([x0 + 220, y0 + 44, x0 + 292, y0 + 72], fill=(70, 76, 92),
-                outline=(150, 150, 160), width=1)
-    for wx in (x0 + 24, x0 + 40, x0 + 56, x0 + 230, x0 + 248, x0 + 266):
-        d.rectangle([wx, y0 + 56, wx + 8, y0 + 66], fill=(255, 220, 60))
+def korea_picture(draw, x, y, w, h):
+    """Night launch site: missile on its pad between two consoles."""
+    draw.rectangle([x, y, x + w, y + h], fill=(16, 22, 44))
+    for sx, sy in [(24, 30), (70, 34), (120, 30), (220, 30), (272, 32), (300, 34)]:
+        draw.ellipse([x + sx, y + sy, x + sx + 3, y + sy + 3], fill=(255, 255, 255))
+    f_label = font(SANS_BOLD, 12)
+    draw.text((x + 10, y + 8), "TACTICAL WEAPONS PUSH", font=f_label, fill=GOLD)
+    # missile
+    mx = x + w // 2
+    draw.polygon([(mx, y + 30), (mx - 11, y + 52), (mx + 11, y + 52)], fill=(200, 200, 205))
+    draw.rectangle([mx - 11, y + 52, mx + 11, y + 82], fill=(200, 200, 205))
+    draw.rectangle([mx - 18, y + 76, mx + 18, y + 84], fill=(120, 120, 128))
+    draw.polygon([(mx - 6, y + 84), (mx + 6, y + 84), (mx, y + 90)], fill=(255, 170, 40))
+    # consoles with yellow lights
+    for cx in (14, w - 78):
+        draw.rectangle([x + cx, y + 62, x + cx + 64, y + 88], fill=(44, 56, 84),
+                       outline=(140, 150, 180), width=1)
+        for lx in (cx + 10, cx + 28, cx + 46):
+            draw.rectangle([x + lx, y + 72, x + lx + 8, y + 80], fill=GOLD)
 
 
-def draw_cairo(d, x0, y0, w, h):
-    d.rectangle([x0, y0, x0 + w, y0 + h], fill=(30, 26, 22),
-                outline=INK, width=1)
-    # night skyline
-    for bx, bw, bh in ((x0 + 10, 34, 26), (x0 + 52, 26, 36),
-                       (x0 + 86, 30, 22), (x0 + 210, 36, 30),
-                       (x0 + 254, 28, 24), (x0 + 288, 18, 18)):
-        d.rectangle([bx, y0 + h - 18 - bh, bx + bw, y0 + h - 18],
-                    fill=(60, 54, 48), outline=(90, 82, 70), width=1)
-    # highway
-    d.rectangle([x0, y0 + h - 18, x0 + w, y0 + h], fill=(80, 76, 70))
-    d.line([(x0, y0 + h - 9), (x0 + w, y0 + h - 9)], fill=(255, 220, 60),
-           width=2)
-    # fire: layered flames over a tanker
-    fx = x0 + 150
-    d.rectangle([fx - 52, y0 + 46, fx + 52, y0 + 62], fill=(150, 150, 150),
-                outline=INK, width=1)
-    d.ellipse([fx - 60, y0 + 54, fx - 44, y0 + 70], fill=INK)
-    d.ellipse([fx + 44, y0 + 54, fx + 60, y0 + 70], fill=INK)
-    d.polygon([(fx - 34, y0 + 46), (fx - 22, y0 + 8), (fx - 8, y0 + 46)],
-              fill=(230, 120, 30))
-    d.polygon([(fx - 6, y0 + 46), (fx + 8, y0 + 2), (fx + 22, y0 + 46)],
-              fill=(250, 160, 40))
-    d.polygon([(fx + 18, y0 + 46), (fx + 30, y0 + 16), (fx + 40, y0 + 46)],
-              fill=(230, 120, 30))
-    d.polygon([(fx - 14, y0 + 46), (fx - 4, y0 + 22), (fx + 6, y0 + 46)],
-              fill=(250, 200, 60))
-    # smoke
-    for sx, sy, r in ((x0 + 120, y0 + 8, 8), (x0 + 140, y0 + 4, 6),
-                      (x0 + 180, y0 + 10, 7)):
-        d.ellipse([sx - r, sy - r, sx + r, sy + r], fill=(120, 112, 100))
-    d.text((x0 + 10, y0 + 6), "31 KILLED • 21 HURT",
-           font=font(SANS_B, 11), fill=(255, 255, 255))
+def egypt_picture(draw, x, y, w, h):
+    """Night highway in Giza: skyline, tanker, flames."""
+    draw.rectangle([x, y, x + w, y + h], fill=(24, 22, 20))
+    for bx, bw, bh in [(10, 34, 34), (52, 26, 48), (86, 40, 28), (220, 30, 42),
+                       (258, 36, 30)]:
+        draw.rectangle([x + bx, y + h - 34 - bh, x + bx + bw, y + h - 34],
+                       fill=(52, 48, 44))
+    f_label = font(SANS_BOLD, 12)
+    draw.text((x + 10, y + 8), "31 KILLED \u2022 21 HURT", font=f_label,
+              fill=(255, 255, 255))
+    # flames over the tanker
+    cx = x + w // 2
+    for fx, fw, fh, col in [(-52, 30, 42, (255, 140, 30)), (-18, 36, 54, (255, 180, 40)),
+                            (18, 28, 40, (255, 120, 20)), (44, 20, 28, (255, 190, 60))]:
+        draw.polygon([(cx + fx, y + h - 34), (cx + fx + fw // 2, y + h - 34 - fh),
+                      (cx + fx + fw, y + h - 34)], fill=col)
+    # tanker body and wheels
+    draw.rounded_rectangle([cx - 74, y + h - 40, cx + 74, y + h - 20],
+                           radius=8, fill=(150, 150, 155))
+    draw.rectangle([cx + 74, y + h - 34, cx + 92, y + h - 20], fill=(120, 120, 125))
+    for wx in (cx - 56, cx - 8, cx + 44):
+        draw.ellipse([wx, y + h - 22, wx + 18, y + h - 4], fill=(10, 10, 10))
+    draw.line([(x, y + h - 2), (x + w, y + h - 2)], fill=(255, 214, 64), width=2)
 
 
-def draw_europa(d, x0, y0, w, h):
-    d.rectangle([x0, y0, x0 + w, y0 + h], fill=PITCH, outline=INK, width=1)
-    d.line([(x0 + w // 2, y0), (x0 + w // 2, y0 + h)], fill=(255, 255, 255),
-           width=2)
-    d.ellipse([x0 + w // 2 - 22, y0 + h // 2 - 22, x0 + w // 2 + 22,
-               y0 + h // 2 + 22], outline=(255, 255, 255), width=2)
-    d.rectangle([x0 + w - 34, y0 + 18, x0 + w - 6, y0 + 62],
-                outline=(255, 255, 255), width=2)
-    for gy in range(y0 + 22, y0 + 60, 8):
-        d.line([(x0 + w - 34, gy), (x0 + w - 6, gy)], fill=(255, 255, 255),
-               width=1)
-    bx, by = x0 + 70, y0 + h - 30
-    d.ellipse([bx - 12, by - 12, bx + 12, by + 12], fill=(255, 255, 255),
-              outline=INK, width=1)
-    d.polygon([(bx, by - 6), (bx + 6, by - 2), (bx + 4, by + 5),
-               (bx - 4, by + 5), (bx - 6, by - 2)], fill=INK)
-    d.rectangle([x0 + 8, y0 + 8, x0 + 176, y0 + 30], fill=(20, 20, 20))
-    d.text((x0 + 14, y0 + 11), "PLZEN 4–0 BENFICA", font=font(SANS_B, 13),
-           fill=(255, 220, 60))
+def pitch(draw, x, y, w, h):
+    """A green football pitch: stripes, halfway line, centre circle."""
+    draw.rectangle([x, y, x + w, y + h], fill=(46, 130, 62))
+    stripe_w = w // 6
+    for i in range(0, 6, 2):
+        draw.rectangle([x + i * stripe_w, y, x + (i + 1) * stripe_w, y + h],
+                       fill=(54, 142, 70))
+    draw.line([(x + w // 2, y), (x + w // 2, y + h)], fill=(255, 255, 255), width=2)
+    draw.ellipse([x + w // 2 - 26, y + h // 2 - 26, x + w // 2 + 26, y + h // 2 + 26],
+                 outline=(255, 255, 255), width=2)
 
 
-def draw_nfl(d, x0, y0, w, h):
-    d.rectangle([x0, y0, x0 + w, y0 + h], fill=(30, 90, 50),
-                outline=INK, width=1)
+def plzen_picture(draw, x, y, w, h):
+    pitch(draw, x, y, w, h)
+    # goal box, right edge
+    draw.rectangle([x + w - 34, y + 22, x + w, y + h - 22], outline=(255, 255, 255),
+                   width=2)
+    # ball on the spot
+    bx, by = x + 78, y + h // 2 + 8
+    draw.ellipse([bx - 11, by - 11, bx + 11, by + 11], fill=(255, 255, 255),
+                 outline=INK, width=2)
+    draw.polygon([(bx, by - 6), (bx + 5, by - 2), (bx + 3, by + 5),
+                  (bx - 3, by + 5), (bx - 5, by - 2)], fill=INK)
+    chip(draw, x + 10, y + 10, "PLZEN 4-0 BENFICA", font(SANS_BOLD, 13),
+         fg=GOLD, bg=(0, 0, 0))
+
+
+def bears_picture(draw, x, y, w, h):
+    pitch(draw, x, y, w, h)
     # yard lines
-    for lx in range(x0 + 40, x0 + w - 20, 44):
-        d.line([(lx, y0 + 6), (lx, y0 + h - 6)], fill=(255, 255, 255), width=2)
-    # goalposts
-    d.line([(x0 + w - 22, y0 + 14), (x0 + w - 22, y0 + h - 14)],
-           fill=(255, 220, 60), width=4)
-    d.line([(x0 + w - 22, y0 + 14), (x0 + w - 34, y0 + 14)],
-           fill=(255, 220, 60), width=4)
-    d.line([(x0 + w - 22, y0 + 14), (x0 + w - 10, y0 + 14)],
-           fill=(255, 220, 60), width=4)
-    # football
-    bx, by = x0 + 90, y0 + 44
-    d.ellipse([bx - 20, by - 12, bx + 20, by + 12], fill=(120, 70, 30),
-              outline=(255, 255, 255), width=2)
-    d.line([(bx - 10, by), (bx + 10, by)], fill=(255, 255, 255), width=2)
-    for lx in (bx - 6, bx - 2, bx + 2, bx + 6):
-        d.line([(lx, by - 4), (lx, by + 4)], fill=(255, 255, 255), width=1)
-    # clock: 3 seconds left
-    d.ellipse([x0 + 210, y0 + 26, x0 + 258, y0 + 74], fill=(255, 255, 255),
-              outline=INK, width=2)
-    d.line([(x0 + 234, y0 + 50), (x0 + 234, y0 + 32)], fill=INK, width=2)
-    d.line([(x0 + 234, y0 + 50), (x0 + 246, y0 + 56)], fill=INK, width=2)
-    d.text((x0 + 10, y0 + h - 18), "3 SECONDS LEFT",
-           font=font(SANS_B, 11), fill=(255, 220, 60))
-    d.rectangle([x0 + 8, y0 + 8, x0 + 168, y0 + 30], fill=(20, 20, 20))
-    d.text((x0 + 14, y0 + 11), "BEARS 39–35 LIONS", font=font(SANS_B, 13),
-           fill=(255, 220, 60))
+    for lx in (70, 140, 210, 280):
+        draw.line([(x + lx, y + 8), (x + lx, y + h - 8)], fill=(255, 255, 255), width=1)
+    # football, left of centre
+    fx, fy = x + 108, y + h // 2 + 6
+    draw.ellipse([fx - 24, fy - 13, fx + 24, fy + 13], fill=(122, 72, 32),
+                 outline=(255, 255, 255), width=2)
+    draw.line([(fx - 12, fy), (fx + 12, fy)], fill=(255, 255, 255), width=2)
+    for lx in (-9, -3, 3, 9):
+        draw.line([(fx + lx, fy - 5), (fx + lx, fy + 5)], fill=(255, 255, 255), width=1)
+    # game clock, right side
+    cx, cy = x + w - 52, y + h // 2
+    draw.ellipse([cx - 24, cy - 24, cx + 24, cy + 24], fill=(255, 255, 255),
+                 outline=INK, width=2)
+    draw.line([(cx, cy), (cx, cy - 15)], fill=INK, width=2)
+    draw.line([(cx, cy), (cx + 11, cy)], fill=INK, width=2)
+    # goalpost, far right edge
+    draw.line([(x + w - 8, y + 16), (x + w - 8, y + h - 16)], fill=GOLD, width=4)
+    draw.line([(x + w - 8, y + 16), (x + w - 26, y + 16)], fill=GOLD, width=4)
+    chip(draw, x + 10, y + 10, "BEARS 39-35 LIONS", font(SANS_BOLD, 13),
+         fg=GOLD, bg=(0, 0, 0))
+    draw.text((x + 10, y + h - 24), "3 SECONDS LEFT", font=font(SANS_BOLD, 12),
+              fill=GOLD)
 
 
-def draw_chip(d, x0, y0, w, h):
-    d.rectangle([x0, y0, x0 + w, y0 + h], fill=(226, 238, 226),
-                outline=INK, width=1)
-    # chip, clear of the corner labels
-    d.rectangle([x0 + 130, y0 + 22, x0 + 220, y0 + 74], fill=(40, 60, 40),
-                outline=INK, width=2)
-    for px in (x0 + 146, x0 + 166, x0 + 186, x0 + 206):
-        d.line([(px, y0 + 14), (px, y0 + 22)], fill=INK, width=3)
-        d.line([(px, y0 + 74), (px, y0 + 80)], fill=INK, width=3)
-    for py in (y0 + 36, y0 + 50, y0 + 64):
-        d.line([(x0 + 122, py), (x0 + 130, py)], fill=INK, width=3)
-        d.line([(x0 + 220, py), (x0 + 228, py)], fill=INK, width=3)
-    d.text((x0 + 152, y0 + 42), "NVDA", font=font(SANS_B, 16),
-           fill=(255, 255, 255))
-    # falling arrow
-    d.line([(x0 + 220, y0 + 14), (x0 + 262, y0 + 34), (x0 + 292, y0 + 58)],
-           fill=RED, width=5)
-    d.polygon([(x0 + 292, y0 + 58), (x0 + 272, y0 + 56),
-               (x0 + 290, y0 + 40)], fill=RED)
-    d.text((x0 + 12, y0 + 8), "S&P: CREDITWATCH", font=font(SANS_B, 12),
-           fill=RED)
-    d.text((x0 + 12, y0 + h - 18), "$149.30  •  -3.9%",
-           font=font(SANS_B, 12), fill=INK)
+def nvidia_picture(draw, x, y, w, h):
+    """CreditWatch chart: pale board, red falling arrow, NVDA chip,
+    rating label at the top and the price clear at the bottom."""
+    draw.rectangle([x, y, x + w, y + h], fill=(228, 240, 228))
+    draw.line([(x, y + h - 26), (x + w, y + h - 26)], fill=(180, 200, 180), width=1)
+    f_label = font(SANS_BOLD, 12)
+    draw.text((x + 10, y + 9), "S&P: CREDITWATCH", font=f_label, fill=RED)
+    # red falling arrow, top right, clear of the label
+    draw.line([(x + 196, y + 14), (x + 296, y + 52)], fill=(200, 30, 36), width=6)
+    draw.polygon([(x + 296, y + 52), (x + 272, y + 46), (x + 290, y + 66)],
+                 fill=(200, 30, 36))
+    # NVDA chip, centre, clear of the arrow and the price line
+    chip(draw, x + 176, y + 58, "NVDA", font(SANS_BOLD, 16),
+         fg=(255, 255, 255), bg=(30, 40, 30), pad_x=16, pad_y=8)
+    draw.text((x + 10, y + h - 22), "$149.30  \u2022  -3.9%",
+              font=font(SANS_BOLD, 13), fill=INK)
 
-GRID = [
+
+# ---------------------------------------------------------------- page
+
+PANELS = [
     ("TRADE", "PARTNERS HIT BACK AT TRUMP'S NEW TARIFFS",
      "China warns it could lift tariffs to 40% if talks fail. The EU and "
-     "Japan protest the plan; a hearing is set for 25 Jan.",
-     draw_trade),
+     "Japan protest the plan; a hearing is set for 25 Jan.", trade_picture),
     ("KOREA", "KIM ORDERS MORE TACTICAL NUCLEAR WEAPONS",
      "Kim Jong Un tours nuclear sites and orders wider deployment of "
-     "tactical weapons, calling the North's status irreversible.",
-     draw_korea),
+     "tactical weapons.", korea_picture),
     ("EGYPT", "31 KILLED IN CAIRO FUEL TANKER FIRE",
      "A tanker overturned on the Ring Road in Giza, setting 27 vehicles "
-     "ablaze. At least 31 people died and 21 were injured.",
-     draw_cairo),
-    ("SPORT", "PLZEN THRASH BENFICA 4–0 IN EUROPE",
-     "Europa League: Plzen stun unbeaten Benfica; Milan come from 2–0 down "
-     "to win 4–2 at Olympiacos; Bournemouth stay perfect.",
-     draw_europa),
+     "ablaze. At least 31 people died and 21 were injured.", egypt_picture),
+    ("SPORT", "PLZEN THRASH BENFICA 4-0 IN EUROPE",
+     "Europa League: Plzen stun unbeaten Benfica; Milan come from 2-0 down "
+     "to win 4-2 at Olympiacos; Bournemouth stay perfect.", plzen_picture),
     ("SPORT", "BEARS STUN LIONS IN THANKSGIVING THRILLER",
      "Caleb Williams finds Rome Odunze with 3 seconds left; Chicago win "
-     "39–35 and take first place in the NFC North.",
-     draw_nfl),
+     "39-35 and take first place in the NFC North.", bears_picture),
     ("MARKETS", "NVIDIA PUT ON CREDITWATCH BY S&P",
      "S&P puts Nvidia on CreditWatch negative; shares fell 3.9% to $149.30 "
-     "as scrutiny of Jensen Huang grows in Washington.",
-     draw_chip),
+     "as scrutiny of Jensen Huang grows in Washington.", nvidia_picture),
+]
+
+ALSO_TODAY = [
+    ("BLACK FRIDAY \u2014 ", "US shoppers head out as Wall Street reopens "
+     "for a short session, closing at 1 p.m. ET."),
+    ("EUROPE \u2014 ", "EU leaders meet in Brussels over the budget and "
+     "further support for Ukraine."),
+    ("RED SEA \u2014 ", "Houthis claim strikes on Saudi Red Sea ports; "
+     "Riyadh says missiles aimed at the capital were intercepted."),
 ]
 
 
-def draw_grid(d):
-    cell_w = (CONTENT_W - 2 * GUTTER) // 3          # 313
-    cell_h = 196
-    y_rows = (476, 678)
-    for i, (kick, head, body, art) in enumerate(GRID):
-        col, row = i % 3, i // 3
-        x = MARGIN + col * (cell_w + GUTTER)
-        y = y_rows[row]
-        art(d, x, y, cell_w, 80)
-        d.text((x, y + 88), kick, font=font(SANS_B, 12), fill=RED)
-        yy = para(d, x, y + 106, head, font(SERIF_B, 18), cell_w, 21)
-        para(d, x, yy + 2, body, font(SANS, 13), cell_w, 16)
-
-
-# ---------------------------------------------------------------- strip
-def draw_strip(d):
-    y0 = 896
-    rule(d, MARGIN, y0, W - MARGIN, width=2)
-    d.text((MARGIN, y0 + 10), "ALSO TODAY", font=font(SANS_B, 15), fill=RED)
-    col_w = (CONTENT_W - 160) // 3
-    items = [
-        ("BLACK FRIDAY", "US shoppers head out as Wall Street reopens for "
-         "a short session, closing at 1 p.m. ET."),
-        ("EUROPE", "EU leaders meet in Brussels over the budget and "
-         "further support for Ukraine."),
-        ("RED SEA", "Houthis claim strikes on Saudi Red Sea ports; Riyadh "
-         "says missiles aimed at the capital were intercepted."),
-    ]
-    x = MARGIN + 160
-    for kick, text in items:
-        para(d, x, y0 + 10, kick + " — " + text, font(SANS, 12), col_w - 12,
-             15)
-        x += col_w
-    rule(d, MARGIN, 956, W - MARGIN, width=1, fill=LIGHT_RULE)
-
-
-# ---------------------------------------------------------------- footer
-def draw_footer(d):
-    f = font(SANS, 12)
-    line = ("THE WORLD  •  Friday 27 November 2026  •  Sources: Reuters, "
-            "AP, CNN, UEFA  •  Drawn in code; no photographs.")
-    d.text(((W - d.textlength(line, font=f)) / 2, 968), line, font=f,
-           fill=MUTED)
-    f2 = font(SANS, 11)
-    line2 = "All events reported on 26–27 November 2026."
-    d.text(((W - d.textlength(line2, font=f2)) / 2, 986), line2, font=f2,
-           fill=MUTED)
-
-
-def main():
-    out = sys.argv[1] if len(sys.argv) > 1 else "entry.png"
+def draw_poster():
     img = Image.new("RGB", (W, H), PAPER)
-    d = ImageDraw.Draw(img)
-    draw_masthead(d)
-    draw_ticker(d)
-    draw_lead(d)
-    draw_grid(d)
-    draw_strip(d)
-    draw_footer(d)
-    img.save(out, "PNG", optimize=True)
-    print(f"wrote {out}")
+    draw = ImageDraw.Draw(img)
+
+    # ---- top meta line
+    f_meta = font(SANS, 13)
+    f_date = font(SERIF_BOLD, 20)
+    draw.text((MARGIN, 26), "No. 332", font=f_meta, fill=INK)
+    date_text = "FRIDAY, 27 NOVEMBER 2026"
+    draw.text(((W - text_w(draw, date_text, f_date)) / 2, 22), date_text,
+              font=f_date, fill=INK)
+    price_text = "PRICE: ONE DAY'S NEWS"
+    draw.text((RIGHT - text_w(draw, price_text, f_meta), 26), price_text,
+              font=f_meta, fill=INK)
+
+    # ---- masthead, scaled to fit the page width
+    f_mast = font(SERIF_BOLD, 124)
+    mast = "THE WORLD"
+    while text_w(draw, mast, f_mast) > CONTENT_W and f_mast.size > 60:
+        f_mast = font(SERIF_BOLD, f_mast.size - 4)
+    draw.text(((W - text_w(draw, mast, f_mast)) / 2, 46), mast,
+              font=f_mast, fill=INK)
+
+    # ---- tagline
+    f_tag = font(SANS, 15)
+    tag = "THE DAY'S NEWS  \u2022  FROM EVERY CORNER OF THE GLOBE"
+    draw.text(((W - text_w(draw, tag, f_tag)) / 2, 164), tag, font=f_tag, fill=INK)
+
+    # ---- double rule under the masthead
+    rule(draw, 184, weight=3)
+    rule(draw, 189, weight=1)
+
+    # ---- markets strip
+    f_strip = font(SANS_BOLD, 15)
+    f_strip_r = font(SANS, 15)
+    y = 197
+    draw.text((MARGIN, y), "MARKETS \u2014 THURSDAY", font=f_strip, fill=RED)
+    sx = MARGIN + int(text_w(draw, "MARKETS \u2014 THURSDAY", f_strip)) + 26
+    segments = [("EU futures ", f_strip_r, INK), ("+1.4\u20132.2%", f_strip, GREEN),
+                ("    Asia ", f_strip_r, INK), ("higher", f_strip, GREEN),
+                ("    US markets ", f_strip_r, INK), ("shut", f_strip, RED),
+                ("    Black Friday ", f_strip_r, INK),
+                ("short session", f_strip, INK)]
+    for text, fnt, col in segments:
+        draw.text((sx, y), text, font=fnt, fill=col)
+        sx += int(text_w(draw, text, fnt))
+    rule(draw, 222, weight=1)
+
+    # ---- lead story
+    lx, ly, lw, lh = MARGIN, 232, 304, 188
+    lead_picture(draw, lx, ly, lw, lh)
+    tx = lx + lw + 16
+    tw = RIGHT - tx
+    f_kick = font(SANS_BOLD, 15)
+    draw.text((tx, ly), "LEAD STORY \u2014 THANKSGIVING DAY", font=f_kick, fill=RED)
+    f_head = font(SERIF_BOLD, 36)
+    y = draw_lines(draw, tx, ly + 24,
+                   ["STORM GROUNDS", "THE PARADE"], f_head, leading=38)
+    f_body = font(SERIF, 15)
+    body = ("Macy's postpones its 100th Thanksgiving Day Parade \u2014 the "
+            "first weather halt in a century \u2014 as a nor'easter bears "
+            "down on New York with gusts to 65 mph. The parade moves to "
+            "Saturday, 8:30 a.m. ET.")
+    y = draw_lines(draw, tx, y + 6, wrap(draw, body, f_body, tw), f_body,
+                   leading=19)
+    f_note = font(SERIF_ITALIC, 13)
+    note = ("Balloons must be grounded when gusts pass 34 mph; high wind "
+            "and coastal flood warnings are in force. The parade was last "
+            "halted in 1942\u201344, in wartime.")
+    draw_lines(draw, tx, y + 4, wrap(draw, note, f_note, tw), f_note, leading=17)
+
+    rule(draw, 438, weight=1)
+
+    # ---- six-panel grid, two rows of three
+    col_w = 312
+    col_x = [MARGIN, MARGIN + col_w + 16, MARGIN + 2 * (col_w + 16)]
+    row_y = [448, 688]
+    pic_h = 92
+    f_ckick = font(SANS_BOLD, 13)
+    f_chead = font(SERIF_BOLD, 21)
+    f_cbody = font(SERIF, 14)
+    for i, (kicker, headline, body_text, painter) in enumerate(PANELS):
+        cx = col_x[i % 3]
+        cy = row_y[i // 3]
+        painter(draw, cx, cy, col_w, pic_h)
+        draw.rectangle([cx, cy, cx + col_w, cy + pic_h], outline=INK, width=1)
+        draw.text((cx, cy + pic_h + 8), kicker, font=f_ckick, fill=RED)
+        head_lines = wrap(draw, headline, f_chead, col_w)
+        draw_lines(draw, cx, cy + pic_h + 26, head_lines, f_chead, leading=22)
+        draw_lines(draw, cx, cy + pic_h + 26 + 3 * 22,
+                   wrap(draw, body_text, f_cbody, col_w), f_cbody, leading=17)
+
+    # ---- Also Today strip
+    rule(draw, 928, weight=2)
+    f_also = font(SANS_BOLD, 14)
+    draw.text((MARGIN, 936), "ALSO TODAY", font=f_also, fill=RED)
+    f_ab = font(SANS_BOLD, 13)
+    f_ar = font(SANS, 13)
+    also_x = [172, 478, 742]
+    also_w = [274, 250, 254]
+    for (bold_part, rest), ax, aw in zip(ALSO_TODAY, also_x, also_w):
+        full = bold_part + rest
+        lines = wrap(draw, full, f_ar, aw)
+        yy = 936
+        for li, line in enumerate(lines):
+            if li == 0 and line.startswith(bold_part.strip()):
+                draw.text((ax, yy), bold_part.strip(), font=f_ab, fill=INK)
+                rest_line = line[len(bold_part.strip()):].lstrip()
+                draw.text((ax + text_w(draw, bold_part.strip(), f_ab) + 4, yy),
+                          rest_line, font=f_ar, fill=INK)
+            else:
+                draw.text((ax, yy), line, font=f_ar, fill=INK)
+            yy += 16
+    rule(draw, 987, weight=1)
+
+    # ---- footer
+    f_foot = font(SANS, 12)
+    foot1 = ("THE WORLD  \u2022  Friday 27 November 2026  \u2022  Sources: "
+             "Reuters, AP, CNN, UEFA  \u2022  Drawn in code; no photographs.")
+    draw.text(((W - text_w(draw, foot1, f_foot)) / 2, 993), foot1,
+              font=f_foot, fill=(90, 90, 90))
+    foot2 = "All events reported on 26\u201327 November 2026."
+    draw.text(((W - text_w(draw, foot2, f_foot)) / 2, 1008), foot2,
+              font=f_foot, fill=(90, 90, 90))
+
+    return img
 
 
 if __name__ == "__main__":
-    main()
+    poster = draw_poster()
+    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "entry.png")
+    poster.save(out, "PNG")
+    print("saved", out, poster.size)

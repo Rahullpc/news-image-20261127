@@ -1,53 +1,50 @@
 # THE WORLD — Friday 27 November 2026
 
-![bounty](https://make.fun/badge/news-image-20261127.svg)
-![rank](https://make.fun/badge/news-image-20261127/Rahullpc/news-image-20261127/rank.svg)
-![reward](https://make.fun/badge/news-image-20261127/Rahullpc/news-image-20261127/reward.svg)
+[![make.fun](https://make.fun/badge/news-image-20261127.svg)](https://make.fun/bounty/news-image-20261127)
+[![rank](https://make.fun/badge/news-image-20261127/Rahullpc/news-image-20261127/rank.svg)](https://make.fun/bounty/news-image-20261127)
+[![reward](https://make.fun/badge/news-image-20261127/Rahullpc/news-image-20261127/reward.svg)](https://make.fun/bounty/news-image-20261127)
 
-Entry for the [news-image-20261127 bounty](https://make.fun/bounty/news-image-20261127):
-sum up 27 November's world news in one image.
+Entry for the make.fun bounty
+[Sum up 27 November's world news in one image](https://make.fun/bounty/news-image-20261127):
+a program that draws the front page of **THE WORLD** for Friday
+27 November 2026 as a single 1024×1024 image — no photographs,
+everything drawn in code.
 
-![THE WORLD — Friday 27 November 2026](entry.png)
+## The day in one image
 
-## The front page
+- **Lead story — Thanksgiving Day:** a nor'easter grounds Macy's
+  100th Thanksgiving Day Parade in New York, the first weather halt
+  in a century. The parade moves to Saturday, 8:30 a.m. ET, with
+  gusts to 65 mph.
+- **Trade:** partners hit back at Trump's new tariffs; China warns
+  it could lift tariffs to 40%.
+- **Korea:** Kim Jong Un orders wider deployment of tactical
+  nuclear weapons.
+- **Egypt:** 31 killed in a fuel tanker fire on Cairo's Ring Road.
+- **Sport:** Plzen thrash Benfica 4–0 in the Europa League; the
+  Bears stun the Lions 39–35 in a Thanksgiving thriller.
+- **Markets:** S&P puts Nvidia on CreditWatch negative; shares fell
+  3.9% to $149.30.
+- **Also today:** Black Friday, EU leaders meet in Brussels, and
+  Houthi claims of strikes on Saudi Red Sea ports.
 
-A code-drawn newspaper front page, **THE WORLD**, dated Friday
-27 November 2026.
-
-- **Lead story:** a nor'easter grounds Macy's 100th Thanksgiving Day
-  Parade — the first weather postponement in the parade's century —
-  with gusts to 65 mph in New York. The parade moves to Saturday,
-  8:30 a.m. ET.
-- **Grid:** trading partners hit back at Trump's new tariffs (China
-  warns it could lift tariffs to 40%); Kim Jong Un orders more
-  tactical nuclear weapons; 31 killed in a fuel tanker fire on
-  Cairo's Ring Road; Plzen thrash Benfica 4–0 in the Europa League;
-  the Bears stun the Lions 39–35 in a Thanksgiving thriller; S&P
-  puts Nvidia on CreditWatch negative.
-- **Also today:** Black Friday as Wall Street reopens for a short
-  session; EU leaders meet in Brussels over the budget and Ukraine
-  aid; the Houthis claim strikes on Saudi Red Sea ports.
-
-Every illustration is drawn in code — no photographs, no network.
-
-## Files
-
-| File | What it is |
-| --- | --- |
-| `entry.png` | The poster, 1024 x 1024, 150,717 bytes |
-| `draw_poster.py` | The program that draws the poster (Pillow) |
-| `main.py` | Stdlib-only entrypoint: copies `entry.png` to the output directory and verifies size, dimensions and sha256 |
-| `RESEARCH.md` | The facts behind every story, and what was deliberately left out |
-| `BUILD.md` | Layout plan and build notes |
+Sources: Reuters, AP, CNN, UEFA. See [RESEARCH.md](RESEARCH.md)
+for the facts behind every story and what was deliberately left out.
 
 ## Run it
 
 ```sh
-python3 draw_poster.py        # redraw entry.png
-MAKEFUN_OUTPUT_DIR=out python3 main.py   # copy it to out/entry.png
+python3 main.py
 ```
 
-## Sources
+Writes `entry.png` (1024×1024) next to `main.py`. Python standard
+library plus Pillow only; no network, no installs, deterministic —
+running it twice writes the same bytes.
 
-Reuters, AP, CNN, UEFA. See `RESEARCH.md` for the facts and for
-the figures that were left out because sources conflicted.
+## Files
+
+- `main.py` — entrypoint; renders the poster to `entry.png`.
+- `draw_poster.py` — all drawing: masthead, markets strip, lead
+  story, six-panel grid, Also Today strip, footer.
+- `RESEARCH.md` — the news research behind the poster.
+- `BUILD.md` — how this entry was built and verified.
